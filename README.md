@@ -1,6 +1,6 @@
 # Cribado bursátil semanal
 
-Cribado de unas 150 acciones (IBEX 35, Euro Stoxx 50 y resto del Mercado Continuo) con los indicadores de la guía de Cajaviva, más PER, payout y deuda neta/EBITDA. Cada sábado se ejecuta solo en GitHub Actions y publica un dashboard en GitHub Pages.
+Cribado de unas 150 acciones (IBEX 35, Euro Stoxx 50 y resto del Mercado Continuo) con indicadores de rentabilidad, sostenibilidad, PER, payout y deuda neta/EBITDA. Cada sábado se ejecuta solo en GitHub Actions y publica un dashboard en GitHub Pages.
 
 ## Puesta en marcha (unos 10 minutos)
 
