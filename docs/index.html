@@ -93,6 +93,31 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .bars div{display:grid;grid-template-columns:120px 1fr 36px;gap:8px;align-items:center;font-size:.84rem;margin:3px 0}
 .bars .b{height:8px;background:var(--chip);border-radius:4px;overflow:hidden}
 .bars .b i{display:block;height:100%;background:var(--accent)}
+.sem{display:inline-block;border-radius:5px;padding:1px 6px;margin:-1px -6px}
+.s-g{background:color-mix(in srgb,var(--pos) 20%,transparent);color:var(--pos)}
+.s-y{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.s-r{background:color-mix(in srgb,var(--neg) 18%,transparent);color:var(--neg)}
+.semleg{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:.8rem;color:var(--muted);margin:10px 0 0}
+.semleg .sem{margin:0}
+.semleg a{color:var(--accent)}
+#glosario{margin-top:22px}
+#glosario>summary{font-size:1rem;font-weight:600;cursor:pointer;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:12px;list-style:none}
+#glosario>summary::after{content:" ▸";color:var(--muted)}
+#glosario[open]>summary::after{content:" ▾"}
+#glosario[open]>summary{border-radius:12px 12px 0 0}
+.glo{background:var(--surface);border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;padding:6px 16px 16px}
+.glo h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:20px 0 4px;font-weight:500}
+.gi{border-bottom:1px solid var(--line);padding:12px 0;scroll-margin-top:12px}
+.gi:last-child{border-bottom:0}
+.gi h4{margin:0 0 4px;font-size:.98rem}
+.gi h4 code{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--muted);font-weight:400;margin-left:6px}
+.gi p{margin:4px 0;font-size:.9rem}
+.gi .k{color:var(--muted)}
+.gi table{font-size:.82rem;margin-top:6px;width:auto;border:1px solid var(--line);border-radius:8px;border-collapse:separate;border-spacing:0;overflow:hidden}
+.gi th,.gi td{text-align:left;padding:5px 10px;position:static;white-space:normal;cursor:default}
+.gi th{font-size:.74rem}
+.gi th:first-child,.gi td:first-child{position:static}
+.gi th[data-sort]::after{content:none}
 section.method{margin-top:26px;font-size:.88rem;color:var(--muted)}
 section.method h2{color:var(--ink);font-size:1rem}
 section.method li{margin:3px 0}
@@ -133,12 +158,15 @@ details summary{cursor:pointer;color:var(--ink)}
     </div>
   </div>
 
+  <div class="semleg"><span class="sem s-g">verde</span> mejor de lo habitual <span class="sem s-y">ámbar</span> dentro de lo habitual <span class="sem s-r">rojo</span> fuera de lo habitual · Los rangos cambian según el tipo de empresa y son convenciones, no normas. <a href="#glosario" onclick="document.getElementById('glosario').open=true">Ver glosario</a></div>
   <div class="tablewrap">
     <table id="tabla">
       <thead><tr id="thead"></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
+
+  <details id="glosario"><summary>Glosario de indicadores y rangos de referencia</summary><div class="glo" id="globody"></div></details>
 
   <section class="method">
     <h2>Metodología y fuentes</h2>
@@ -148,6 +176,7 @@ details summary{cursor:pointer;color:var(--ink)}
       <li><b>Añadidos:</b> PER, payout, deuda neta/EBITDA, distancia a máximos y mínimos de 52 semanas y a la media de 200 sesiones (sustituto objetivo de soportes y resistencias).</li>
       <li><b>Financieras e inmobiliarias:</b> no se muestran EBITDA ni deuda neta/EBITDA, porque en bancos, aseguradoras y socimis no son comparables.</li>
       <li><b>Puntuación 0–100:</b> media de percentiles dentro del sector de Yahoo en PER (bajo), P/VC (bajo), RDP (alta), ROE (alto) y deuda neta/EBITDA (baja). Con menos de 4 comparables se compara con todo el universo. PER y P/VC negativos no puntúan. Exige al menos 3 métricas.</li>
+      <li><b>Semáforo:</b> colorea cada indicador según rangos de referencia distintos para empresas en general, financieras, inmobiliarias y utilities (detalle en el glosario). Los rangos son convenciones de análisis, no normas, y se editan en el objeto <span class="mono">RANGOS</span> de <span class="mono">docs/index.html</span>.</li>
       <li><b>Alertas:</b> <i>posible trampa de dividendo</i> (RDP ≥ 7 % con payout &gt; 100 % o deuda/EBITDA &gt; 4×); <i>cerca de mínimos</i> (≤ 5 % sobre el mínimo de 52 semanas); <i>caída semanal</i> (≤ −5 %); <i>revisar moneda</i> (cotiza en una divisa y reporta en otra, así que algunos ratios de Yahoo pueden estar mal calculados).</li>
       <li><b>Limitaciones:</b> los fundamentales se actualizan trimestralmente, de modo que la señal semanal procede sobre todo del precio. La composición de los índices debe revisarse tras cada revisión trimestral (archivo <span class="mono">tickers.csv</span>).</li>
     </ul>
@@ -188,28 +217,178 @@ function scoreCell(s){
 }
 const median = arr => { const a = arr.filter(x=>!n(x)).sort((x,y)=>x-y); if(!a.length) return null; const m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2; };
 
+/* ---------- Semáforo: rangos de referencia ----------
+   g = mejor de lo habitual, y = habitual, r = fuera de lo habitual.
+   Son convenciones prácticas de análisis, no normas; ajústalas aquí y el glosario se actualiza solo.
+   Grupos: def (general), fin (bancos/seguros/financieras), re (inmobiliarias/socimis), util (eléctricas, gas, agua). */
+const GRUPO_NOMBRE = {def:'General', fin:'Financieras', re:'Inmobiliarias', util:'Utilities'};
+const grupo = f => f.sector==='Financial Services' ? 'fin' : f.sector==='Real Estate' ? 're' : f.sector==='Utilities' ? 'util' : 'def';
+const bandas = (v, gmin, gmax, ymin, ymax) => (v>=gmin && v<=gmax) ? 'g' : (v>=ymin && v<=ymax) ? 'y' : 'r';
+const RANGOS = {
+  per: {
+    def:{t:['< 12','12 – 20','> 20 o pérdidas'], f:v=> v<=0?'r':v<12?'g':v<=20?'y':'r'},
+    fin:{t:['< 8','8 – 12','> 12 o pérdidas'], f:v=> v<=0?'r':v<8?'g':v<=12?'y':'r'},
+  },
+  pvc: {
+    def:{t:['< 1,5','1,5 – 4','> 4 o negativo'], f:v=> v<=0?'r':v<1.5?'g':v<=4?'y':'r'},
+    fin:{t:['< 0,9','0,9 – 1,5','> 1,5'], f:v=> v<=0?'r':v<0.9?'g':v<=1.5?'y':'r'},
+    re: {t:['< 0,8','0,8 – 1,1','> 1,1'], f:v=> v<=0?'r':v<0.8?'g':v<=1.1?'y':'r'},
+    util:{t:['< 1,3','1,3 – 2,5','> 2,5'], f:v=> v<=0?'r':v<1.3?'g':v<=2.5?'y':'r'},
+  },
+  rdp: {
+    def:{t:['3,5 % – 7 %','< 3,5 % (o no reparte)','> 7 % (riesgo de recorte)'], f:v=> v>7?'r':v>=3.5?'g':'y'},
+  },
+  payout: {
+    def:{t:['25 % – 65 %','65 % – 90 % o < 25 %','> 90 %'], f:v=> (v>90||v<0)?'r':(v>=25&&v<=65)?'g':'y'},
+    util:{t:['50 % – 80 %','80 % – 100 % o < 50 %','> 100 %'], f:v=> (v>100||v<0)?'r':(v>=50&&v<=80)?'g':'y'},
+    re: {t:['70 % – 100 %','100 % – 110 % o < 70 %','> 110 %'], f:v=> (v>110||v<0)?'r':(v>=70&&v<=100)?'g':'y'},
+  },
+  roe: {
+    def:{t:['≥ 15 %','8 % – 15 %','< 8 %'], f:v=> v>=15?'g':v>=8?'y':'r'},
+    fin:{t:['≥ 12 %','8 % – 12 %','< 8 %'], f:v=> v>=12?'g':v>=8?'y':'r'},
+    util:{t:['≥ 10 %','6 % – 10 %','< 6 %'], f:v=> v>=10?'g':v>=6?'y':'r'},
+    re: {t:['≥ 8 %','4 % – 8 %','< 4 %'], f:v=> v>=8?'g':v>=4?'y':'r'},
+  },
+  roa: {
+    def:{t:['≥ 7 %','3 % – 7 %','< 3 %'], f:v=> v>=7?'g':v>=3?'y':'r'},
+    fin:{t:['≥ 1 %','0,5 % – 1 %','< 0,5 %'], f:v=> v>=1?'g':v>=0.5?'y':'r'},
+    util:{t:['≥ 4 %','2 % – 4 %','< 2 %'], f:v=> v>=4?'g':v>=2?'y':'r'},
+    re: {t:['≥ 4 %','2 % – 4 %','< 2 %'], f:v=> v>=4?'g':v>=2?'y':'r'},
+  },
+  deuda_neta_ebitda: {
+    def:{t:['< 1,5× (o caja neta)','1,5× – 3×','> 3×'], f:v=> v<1.5?'g':v<=3?'y':'r'},
+    util:{t:['< 3,5×','3,5× – 5×','> 5×'], f:v=> v<3.5?'g':v<=5?'y':'r'},
+  },
+  margen_ebitda: {
+    def:{t:['≥ 20 %','10 % – 20 %','< 10 %'], f:v=> v>=20?'g':v>=10?'y':'r'},
+    util:{t:['≥ 30 %','20 % – 30 %','< 20 %'], f:v=> v>=30?'g':v>=20?'y':'r'},
+  },
+  cobertura_div: {
+    def:{t:['≥ 1,2×','0,8× – 1,2×','< 0,8×'], f:v=> v>=1.2?'g':v>=0.8?'y':'r'},
+  },
+  volatilidad: {
+    def:{t:['< 20 %','20 % – 35 %','> 35 %'], f:v=> v<20?'g':v<=35?'y':'r'},
+  },
+};
+/* Métricas que no tienen sentido en ciertos grupos */
+const NO_APLICA = {deuda_neta_ebitda:['fin','re'], margen_ebitda:['fin','re'], cobertura_div:['fin']};
+function nivel(campo, f){
+  const R = RANGOS[campo]; const v = f[campo];
+  if (!R || n(v)) return null;
+  const g = grupo(f);
+  if ((NO_APLICA[campo]||[]).includes(g)) return null;
+  if ((campo==='payout' || campo==='rdp') && !(f.dpa>0)) return campo==='rdp' ? 'y' : null;
+  return (R[g] || R.def).f(v);
+}
+const NIVEL_TXT = {g:'mejor de lo habitual', y:'dentro de lo habitual', r:'fuera de lo habitual'};
+function sem(campo, f, html){
+  if ((NO_APLICA[campo]||[]).includes(grupo(f))) return '<span class="na" title="No aplica a este tipo de empresa">n/a</span>';
+  const s = nivel(campo, f);
+  if (!s) return html;
+  const R = RANGOS[campo][grupo(f)] || RANGOS[campo].def;
+  const idx = {g:0,y:1,r:2}[s];
+  return `<span class="sem s-${s}" title="${NIVEL_TXT[s]} (${GRUPO_NOMBRE[RANGOS[campo][grupo(f)]?grupo(f):'def']}: ${R.t[idx]})">${html}</span>`;
+}
+
+const NA = '<span class="na">—</span>';
+const x1 = v => n(v) ? NA : ES1.format(v)+'×';
 const COLS = [
   ['ticker','Valor', f=>`<div class="tkr">${f.ticker.replace(/\.(MC|PA|DE|AS|MI|BR|HE)$/,'')}<small>${f.nombre}</small></div>`],
   ['score','Punt.', f=>scoreCell(f.score)],
   ['precio','Precio', f=>fmt(f.precio,2)],
   ['var_semana','Sem.', f=>pct(f.var_semana,true)],
-  ['per','PER', f=>fmt(f.per)],
-  ['pvc','P/VC', f=>fmt(f.pvc,2)],
-  ['rdp','RDP', f=>pct(f.rdp)],
-  ['payout','Payout', f=>pct(f.payout)],
-  ['roe','ROE', f=>pct(f.roe)],
-  ['roa','ROA', f=>pct(f.roa)],
+  ['per','PER', f=>sem('per',f,fmt(f.per))],
+  ['pvc','P/VC', f=>sem('pvc',f,fmt(f.pvc,2))],
+  ['rdp','RDP', f=>sem('rdp',f,pct(f.rdp))],
+  ['payout','Payout', f=>sem('payout',f,pct(f.payout))],
+  ['cobertura_div','Cob. div.', f=>sem('cobertura_div',f,x1(f.cobertura_div))],
+  ['roe','ROE', f=>sem('roe',f,pct(f.roe))],
+  ['roa','ROA', f=>sem('roa',f,pct(f.roa))],
+  ['margen_ebitda','Mg. EBITDA', f=>sem('margen_ebitda',f,pct(f.margen_ebitda))],
+  ['deuda_neta_ebitda','DN/EBITDA', f=>sem('deuda_neta_ebitda',f,x1(f.deuda_neta_ebitda))],
+  ['volatilidad','Volat.', f=>sem('volatilidad',f,pct(f.volatilidad))],
   ['bpa','BPA', f=>fmt(f.bpa,2)],
   ['dpa','DPA', f=>fmt(f.dpa,2)],
-  ['ebitda','EBITDA', f=>big(f.ebitda)],
-  ['deuda_neta_ebitda','DN/EBITDA', f=>n(f.deuda_neta_ebitda)?'<span class="na">—</span>':ES1.format(f.deuda_neta_ebitda)+'×'],
   ['fcl_accion','FCL/acc.', f=>fmt(f.fcl_accion,2)],
-  ['volatilidad','Volat.', f=>pct(f.volatilidad)],
+  ['ebitda','EBITDA', f=>big(f.ebitda)],
   ['dist_min_52s','vs mín 52s', f=>pct(f.dist_min_52s,true)],
   ['dist_media_200','vs MM200', f=>pct(f.dist_media_200,true)],
   ['ingresos','Ingresos', f=>big(f.ingresos)],
   ['alertas','Alertas', f=>tags(f)],
 ];
+
+const GLOSARIO = [
+ {sec:'Puntuación', items:[
+  {k:'score', n:'Puntuación (0–100)', q:'Una nota relativa que calcula este propio script; no procede de Yahoo, de analistas ni de ninguna agencia.',
+   fx:'Para cada empresa se calcula su percentil dentro de su sector de Yahoo en cinco métricas —PER (mejor cuanto más bajo), P/VC (bajo), RDP (alta), ROE (alto) y deuda neta/EBITDA (baja)— y se promedian. Con menos de 4 empresas en el sector se compara con todo el universo; PER y P/VC negativos no puntúan; se exigen al menos 3 métricas.',
+   l:'Un 78 significa «en conjunto, más barata y más rentable que la mayoría de su sector», no «buena inversión». Es relativa: en un sector caro, la mejor puede seguir siendo cara. Y los sectores de Yahoo son amplios (Basic Materials mezcla papeleras, siderúrgicas y químicas).'}
+ ]},
+ {sec:'Valoración y dividendo', items:[
+  {k:'per', n:'PER (precio / beneficio)', q:'Cuántos euros pagas por cada euro de beneficio anual de la empresa.',
+   fx:'Precio por acción ÷ BPA de los últimos 12 meses.',
+   l:'Un PER de 12,7 equivale a decir que, si el beneficio se mantuviera, tardarías 12,7 años en «recuperar» el precio con beneficios. Su inverso es el <b>earnings yield</b> (BPA ÷ precio = 1 ÷ PER): con PER 12,7 la empresa gana cada año un 7,9 % de lo que cuesta. No es lo que cobras: cobras la RDP (la parte repartida) y el resto se reinvierte. Por eso earnings yield × payout ≈ RDP. Sirve para comparar con un bono: si el bono a 10 años da un 3 %, un earnings yield del 7,9 % compensa el riesgo extra de la acción. Límites: usa beneficio contable pasado (con extraordinarios incluidos) y un PER bajo puede reflejar que el mercado espera que el beneficio caiga.'},
+  {k:'pvc', n:'P/VC (precio / valor contable)', q:'Cuánto pagas respecto al patrimonio neto contable.',
+   fx:'Capitalización ÷ patrimonio neto atribuido (o precio ÷ valor contable por acción).',
+   l:'Por debajo de 1 compras los activos netos con descuento sobre libros. Funciona bien en bancos e inmobiliarias, cuyos balances están cerca del valor razonable; en empresas con mucho intangible no reconocido (marcas, software) el P/VC alto es normal. En socimis se compara mejor con el NAV/NTA que publican.'},
+  {k:'dpa', n:'DPA (dividendo por acción)', q:'Euros de dividendo anual por acción.',
+   fx:'Dividendo anual declarado (o de los últimos 12 meses) ÷ nº de acciones.',
+   l:'En cifra absoluta no dice nada (0,38 € puede ser mucho o poco según el precio); por eso no lleva semáforo. Se interpreta a través de la RDP, el payout y la cobertura con flujo de caja.'},
+  {k:'rdp', n:'RDP (rentabilidad por dividendo)', q:'Qué porcentaje del precio recibes cada año en dividendos.',
+   fx:'DPA ÷ precio × 100.',
+   l:'Más alta no siempre es mejor: una RDP muy elevada suele indicar que el mercado descuenta un recorte. Por eso &gt; 7 % sale en rojo. Una RDP baja no es mala en sí (empresas en crecimiento reinvierten); sale en ámbar.'},
+  {k:'payout', n:'Payout', q:'Qué parte del beneficio se reparte como dividendo.',
+   fx:'Dividendos pagados ÷ beneficio neto × 100 (Yahoo). Puede diferir algo de DPA ÷ BPA.',
+   l:'Por encima del 100 % se reparte más de lo que se gana, lo que no es sostenible salvo que el beneficio esté deprimido de forma puntual. Las utilities y, sobre todo, las socimis (obligadas por ley a repartir la mayor parte) tienen payouts estructuralmente altos.'},
+  {k:'cobertura_div', n:'Cobertura del dividendo con caja (FCL / DPA)', q:'Cuántas veces cubre el flujo de caja libre el dividendo.',
+   fx:'Flujo de caja libre por acción ÷ DPA. Calculado en el dashboard.',
+   l:'Complementa al payout, que es contable. Por debajo de 1× el dividendo se paga con caja acumulada o deuda, no con lo generado en el año. Puede ser transitorio (año de fuerte inversión) pero conviene mirarlo en la memoria. No se aplica a financieras, donde el flujo de caja libre no es significativo.'},
+ ]},
+ {sec:'Resultados y rentabilidad', items:[
+  {k:'ingresos', n:'Ingresos', q:'Cifra de negocios de los últimos 12 meses.', fx:'Importe neto de la cifra de negocios (TTM).', l:'Indica tamaño, no rentabilidad. Sin semáforo.'},
+  {k:'ebitda', n:'EBITDA', q:'Resultado de explotación antes de amortizaciones.', fx:'Resultado antes de intereses, impuestos, depreciaciones y amortizaciones.',
+   l:'Aproxima la capacidad de generar caja del negocio sin el efecto de la financiación ni de la política de amortización. No es una magnitud normalizada por las NIIF: cada empresa la define a su manera. No se muestra en financieras ni inmobiliarias.'},
+  {k:'margen_ebitda', n:'Margen EBITDA', q:'Qué parte de las ventas se convierte en EBITDA.', fx:'EBITDA ÷ ingresos × 100. Calculado en el dashboard.',
+   l:'Muy dependiente del sector: la distribución trabaja con márgenes del 5-10 % y las utilities o el software con más del 30 %. Úsalo sobre todo para comparar dentro del mismo sector.'},
+  {k:'bpa', n:'BPA (beneficio por acción)', q:'Beneficio neto atribuido por acción.', fx:'Resultado neto atribuido a la dominante ÷ nº medio de acciones (TTM).', l:'Base del PER. Negativo indica pérdidas. Sin semáforo.'},
+  {k:'roe', n:'ROE (rentabilidad financiera)', q:'Cuánto gana la empresa por cada euro de fondos propios.',
+   fx:'Resultado neto ÷ patrimonio neto × 100.',
+   l:'Relación útil: P/VC ÷ ROE ≈ PER. Un ROE alto con P/VC bajo es la combinación que busca el gráfico de dispersión. Cuidado: el ROE sube con el endeudamiento (menos fondos propios) y con las recompras; compáralo siempre con el ROA y con la deuda.'},
+  {k:'roa', n:'ROA (rentabilidad económica)', q:'Cuánto gana la empresa sobre el total de sus activos, con independencia de cómo se financie.',
+   fx:'Resultado neto ÷ activo total × 100.',
+   l:'Si el ROE es mucho mayor que el ROA, la empresa está apalancada. En bancos el ROA es estructuralmente bajo (≈ 1 %) porque su activo son préstamos financiados con depósitos.'},
+  {k:'fcl_accion', n:'FCL por acción (flujo de caja libre)', q:'Caja que queda tras financiar la explotación y las inversiones.',
+   fx:'(Flujo de explotación − inversiones en inmovilizado) ÷ nº de acciones.',
+   l:'Es lo que puede destinarse a dividendos, recompras o reducir deuda. Se compara con el DPA en la columna de cobertura.'},
+  {k:'fco_accion', n:'FCO por acción (flujo de caja operativo)', q:'Caja generada por las actividades de explotación.',
+   fx:'Flujo de efectivo de las actividades de explotación ÷ nº de acciones.',
+   l:'Si es sistemáticamente superior al BPA, el beneficio se convierte en caja (buena calidad del resultado); si es inferior durante años, revisa devengos y circulante.'},
+  {k:'deuda_neta_ebitda', n:'Deuda neta / EBITDA', q:'Cuántos años de EBITDA harían falta para devolver la deuda neta.',
+   fx:'(Deuda financiera − efectivo) ÷ EBITDA. Negativo = caja neta.',
+   l:'La referencia que usan bancos y agencias de rating. Las utilities soportan más deuda por sus ingresos regulados y estables. No aplica a financieras (la deuda es su materia prima) ni a inmobiliarias (se usa el LTV).'},
+ ]},
+ {sec:'Precio y riesgo', items:[
+  {k:'volatilidad', n:'Volatilidad anual', q:'Cuánto oscila el precio a lo largo del año.',
+   fx:'Desviación típica de los rendimientos logarítmicos diarios del último año × √252.',
+   l:'Como referencia, el IBEX 35 suele moverse entre el 15 % y el 20 %. En valores poco líquidos subestima el riesgo real, porque el precio no cambia mientras no hay operaciones.'},
+  {k:'dist_min_52s', n:'Distancia a mínimos y máximos de 52 semanas', q:'Dónde está el precio dentro de su rango del último año.',
+   fx:'Precio ÷ mínimo (o máximo) de 52 semanas − 1.', l:'Sustituto objetivo de los soportes y resistencias. Estar cerca de mínimos no es una señal de compra por sí misma; puede reflejar un deterioro real. Sin semáforo.'},
+  {k:'dist_media_200', n:'Distancia a la media de 200 sesiones', q:'Si el precio está por encima o por debajo de su tendencia de fondo.',
+   fx:'Precio ÷ media de los últimos 200 cierres − 1.', l:'Por encima suele leerse como tendencia alcista y por debajo como bajista o lateral. Es descriptivo, no predictivo. Sin semáforo.'},
+ ]},
+];
+function renderGlosario(){
+  const tabla = k => {
+    const R = RANGOS[k]; if (!R) return '';
+    const filas = Object.keys(R).map(g=>`<tr><td>${GRUPO_NOMBRE[g]}${g==='def'&&Object.keys(R).length>1?' (resto)':''}</td><td><span class="sem s-g">${R[g].t[0]}</span></td><td><span class="sem s-y">${R[g].t[1]}</span></td><td><span class="sem s-r">${R[g].t[2]}</span></td></tr>`).join('');
+    const na = NO_APLICA[k] ? `<p class="k" style="font-size:.8rem">No aplica a: ${NO_APLICA[k].map(g=>GRUPO_NOMBRE[g].toLowerCase()).join(' y ')}.</p>` : '';
+    return `<table><thead><tr><th>Tipo de empresa</th><th>Verde</th><th>Ámbar</th><th>Rojo</th></tr></thead><tbody>${filas}</tbody></table>${na}`;
+  };
+  document.getElementById('globody').innerHTML = GLOSARIO.map(s=>`<h3>${s.sec}</h3>`+s.items.map(i=>`
+    <div class="gi" id="g-${i.k}"><h4>${i.n}</h4>
+      <p>${i.q}</p><p><span class="k">Cálculo:</span> ${i.fx}</p><p><span class="k">Cómo leerlo:</span> ${i.l}</p>${tabla(i.k)}</div>`).join('')).join('');
+}
+const AYUDA = {}; GLOSARIO.forEach(s=>s.items.forEach(i=>AYUDA[i.k]=i.q));
+
 function tags(f){ return (f.alertas||[]).map(a=>ALERTA[a]?`<span class="tag ${ALERTA[a][1]}">${ALERTA[a][0]}</span>`:'').join(''); }
 
 function filtrados(){
@@ -257,14 +436,14 @@ function renderSignals(rows){
 const tip = document.getElementById('tip');
 function renderScatter(rows){
   const svg = document.getElementById('scatter');
-  const W=420,H=300,m={l:40,r:12,t:10,b:34};
+  const W=420,H=300,m={l:50,r:12,t:10,b:34};
   const pts = rows.filter(f=>f.pvc>0 && f.pvc<12 && !n(f.roe) && f.roe>-30 && f.roe<60);
-  const xmax = Math.max(3, ...pts.map(f=>f.pvc))*1.05, ymin = Math.min(0,...pts.map(f=>f.roe)), ymax = Math.max(20,...pts.map(f=>f.roe))*1.05;
+  const xmax = Math.max(3, ...pts.map(f=>f.pvc))*1.05, ymin = Math.floor(Math.min(0,...pts.map(f=>f.roe))/5)*5, ymax = Math.max(20,...pts.map(f=>f.roe))*1.05;
   const X = v => m.l + (v/xmax)*(W-m.l-m.r), Y = v => H-m.b - ((v-ymin)/(ymax-ymin))*(H-m.t-m.b);
   let g = '';
   const xt = xmax>8?2:1; for(let v=0; v<=xmax; v+=xt) g+=`<line class="ax" x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${H-m.b}"/><text x="${X(v)}" y="${H-m.b+14}" text-anchor="middle">${v}</text>`;
-  const yt = (ymax-ymin)>40?10:5; for(let v=Math.ceil(ymin/yt)*yt; v<=ymax; v+=yt) g+=`<line class="ax" x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v}%</text>`;
-  g += `<text x="${(W+m.l)/2}" y="${H-4}" text-anchor="middle">P/VC (veces)</text><text x="12" y="${(H-m.b)/2}" text-anchor="middle" transform="rotate(-90 12 ${(H-m.b)/2})">ROE</text>`;
+  const yt = (ymax-ymin)>40?10:5; for(let v=Math.floor(ymin/yt)*yt; v<=ymax; v+=yt) g+=`<line class="ax" x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v}%</text>`;
+  g += `<text x="${(W+m.l)/2}" y="${H-4}" text-anchor="middle">P/VC (veces)</text><text x="10" y="${(H-m.b)/2}" text-anchor="middle" transform="rotate(-90 10 ${(H-m.b)/2})">ROE</text>`;
   g += pts.map(f=>`<circle cx="${X(f.pvc)}" cy="${Y(f.roe)}" r="4.5" fill="${colorIdx(f)}" fill-opacity=".8" data-t="${f.ticker}"/>`).join('');
   svg.innerHTML = g;
   svg.querySelectorAll('circle').forEach(c=>{
@@ -275,7 +454,7 @@ function renderScatter(rows){
 }
 
 function renderTable(rows){
-  document.getElementById('thead').innerHTML = COLS.map(([k,l])=>`<th data-sort="${k}" class="${orden.k===k?(orden.dir>0?'asc':'desc'):''}">${l}</th>`).join('');
+  document.getElementById('thead').innerHTML = COLS.map(([k,l])=>`<th data-sort="${k}" title="${(AYUDA[k]||'').replace(/"/g,'&quot;')}" class="${orden.k===k?(orden.dir>0?'asc':'desc'):''}">${l}</th>`).join('');
   const s = [...rows].sort((a,b)=>{
     let x=a[orden.k], y=b[orden.k];
     if (orden.k==='ticker'){x=a.nombre;y=b.nombre; return orden.dir*x.localeCompare(y,'es');}
@@ -293,14 +472,17 @@ function detalle(t){
   const nombres = {per:'PER',pvc:'P/VC',rdp:'RDP',roe:'ROE',deuda_neta_ebitda:'Deuda neta/EBITDA'};
   const bars = Object.entries(f.score_detalle||{}).map(([k,v])=>`<div><span>${nombres[k]}</span><span class="b"><i style="width:${v}%"></i></span><span>${v}</span></div>`).join('');
   document.getElementById('dbody').innerHTML = `
+    <p class="k" style="font-size:.8rem;margin:0 0 4px">Semáforo con rangos de: ${GRUPO_NOMBRE[grupo(f)]} · <a href="#glosario" onclick="det.close();document.getElementById('glosario').open=true" style="color:var(--accent)">glosario</a></p>
     <h3>Valoración y dividendo</h3><div class="dgrid">
-      ${kv('Precio',fmt(f.precio,2))}${kv('Capitalización',big(f.capitalizacion))}${kv('PER',fmt(f.per))}${kv('PER estimado',fmt(f.per_futuro))}
-      ${kv('P/VC',fmt(f.pvc,2))}${kv('RDP',pct(f.rdp))}${kv('DPA',fmt(f.dpa,2))}${kv('Payout',pct(f.payout))}</div>
+      ${kv('Precio',fmt(f.precio,2))}${kv('Capitalización',big(f.capitalizacion))}${kv('PER',sem('per',f,fmt(f.per)))}${kv('PER estimado',fmt(f.per_futuro))}
+      ${kv('P/VC',sem('pvc',f,fmt(f.pvc,2)))}${kv('RDP',sem('rdp',f,pct(f.rdp)))}${kv('DPA',fmt(f.dpa,2))}${kv('Payout',sem('payout',f,pct(f.payout)))}
+      ${kv('Earnings yield (1/PER)',f.per>0?pct(100/f.per):NA)}${kv('Cobertura div. con FCL',sem('cobertura_div',f,x1(f.cobertura_div)))}</div>
     <h3>Resultados y rentabilidad</h3><div class="dgrid">
-      ${kv('Ingresos',big(f.ingresos))}${kv('EBITDA',f.financiera?'<span class="na">n/a (financiera)</span>':big(f.ebitda))}${kv('BPA',fmt(f.bpa,2))}${kv('ROE',pct(f.roe))}
-      ${kv('ROA',pct(f.roa))}${kv('FCL por acción',fmt(f.fcl_accion,2))}${kv('FCO por acción',fmt(f.fco_accion,2))}${kv('Deuda neta/EBITDA',f.financiera?'<span class="na">n/a</span>':(n(f.deuda_neta_ebitda)?'—':ES1.format(f.deuda_neta_ebitda)+'×'))}</div>
+      ${kv('Ingresos',big(f.ingresos))}${kv('EBITDA',f.financiera?'<span class="na">n/a</span>':big(f.ebitda))}${kv('Margen EBITDA',sem('margen_ebitda',f,pct(f.margen_ebitda)))}${kv('BPA',fmt(f.bpa,2))}
+      ${kv('ROE',sem('roe',f,pct(f.roe)))}${kv('ROA',sem('roa',f,pct(f.roa)))}${kv('FCL por acción',fmt(f.fcl_accion,2))}${kv('FCO por acción',fmt(f.fco_accion,2))}
+      ${kv('Deuda neta/EBITDA',f.financiera?'<span class="na">n/a</span>':sem('deuda_neta_ebitda',f,x1(f.deuda_neta_ebitda)))}</div>
     <h3>Precio y riesgo</h3><div class="dgrid">
-      ${kv('Var. semanal',pct(f.var_semana,true))}${kv('Var. 4 semanas',pct(f.var_4s,true))}${kv('Volatilidad anual',pct(f.volatilidad))}${kv('Máx. 52 s.',fmt(f.max_52s,2))}
+      ${kv('Var. semanal',pct(f.var_semana,true))}${kv('Var. 4 semanas',pct(f.var_4s,true))}${kv('Volatilidad anual',sem('volatilidad',f,pct(f.volatilidad)))}${kv('Máx. 52 s.',fmt(f.max_52s,2))}
       ${kv('Mín. 52 s.',fmt(f.min_52s,2))}${kv('vs mínimo 52 s.',pct(f.dist_min_52s,true))}${kv('Media 200 sesiones',fmt(f.media_200,2))}${kv('vs media 200',pct(f.dist_media_200,true))}</div>
     <h3>Puntuación ${n(f.score)?'—':f.score}${!n(f.score_anterior)?` (semana anterior ${f.score_anterior})`:''} · comparada con ${f.comparado_con==='universo'?'todo el universo':'su sector'}</h3>
     <div class="bars">${bars||'<span class="na">Sin datos suficientes</span>'}</div>
@@ -321,6 +503,11 @@ document.addEventListener('click', e=>{
 
 fetch('data/latest.json',{cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); }).then(d=>{
   D = d;
+  D.valores.forEach(f=>{
+    f.margen_ebitda = (!n(f.ebitda) && f.ingresos>0) ? f.ebitda/f.ingresos*100 : null;
+    f.cobertura_div = (f.dpa>0 && !n(f.fcl_accion)) ? f.fcl_accion/f.dpa : null;
+  });
+  renderGlosario();
   const fecha = new Date(d.generado).toLocaleString('es-ES',{dateStyle:'long',timeStyle:'short'});
   document.getElementById('meta').innerHTML = `Actualizado el ${fecha} · ${d.n_ok} de ${d.n_universo} valores · Fuente: ${d.fuente} · <a href="data/latest.json">datos en bruto</a>`;
   if (d.demo) document.getElementById('banner').innerHTML = '<div class="banner"><b>Datos de demostración.</b> Son cifras sintéticas para probar el diseño; se sustituyen en la primera ejecución real.</div>';
