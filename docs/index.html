@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cribado bursátil semanal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f1; --surface:#ffffff; --ink:#1c1d1f; --muted:#6b6d72; --line:#e3e1da;
+  --accent:#1f5f8b; --pos:#1d7a4a; --neg:#b3372f; --warn:#a86a00;
+  --ibex:#c2410c; --es50:#1f5f8b; --cont:#6d5bb5;
+  --chip:#efede6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141517; --surface:#1c1d20; --ink:#ecebe7; --muted:#9a9ca1; --line:#2d2e32;
+    --accent:#6fb0dc; --pos:#5cc08b; --neg:#ef7a70; --warn:#e3a43b;
+    --ibex:#f08a52; --es50:#6fb0dc; --cont:#a99bea; --chip:#26272b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141517; --surface:#1c1d20; --ink:#ecebe7; --muted:#9a9ca1; --line:#2d2e32;
+  --accent:#6fb0dc; --pos:#5cc08b; --neg:#ef7a70; --warn:#e3a43b;
+  --ibex:#f08a52; --es50:#6fb0dc; --cont:#a99bea; --chip:#26272b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 16px 60px}
+header h1{font-size:1.55rem;margin:0 0 4px;font-weight:600;letter-spacing:-.01em}
+.meta{color:var(--muted);font-size:.86rem}
+.meta a{color:var(--accent)}
+.banner{margin:12px 0;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--ink);font-size:.9rem;border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi .v{font-size:1.5rem;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi .l{color:var(--muted);font-size:.8rem}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 14px}
+.chip{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-size:.86rem;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+select,input[type=search]{font:inherit;font-size:.9rem;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+input[type=search]{min-width:180px;flex:1 1 180px}
+label.tg{font-size:.86rem;color:var(--muted);display:flex;gap:6px;align-items:center}
+.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.card h2{font-size:1rem;margin:0 0 4px;font-weight:600}
+.card .sub{color:var(--muted);font-size:.82rem;margin-bottom:10px}
+.sig{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.sig{grid-template-columns:1fr}}
+.sig h3{font-size:.82rem;margin:0 0 6px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.sig ol{margin:0;padding-left:18px}
+.sig li{margin:2px 0;font-size:.9rem}
+.sig li button{all:unset;cursor:pointer;color:var(--accent)}
+.sig li .n{color:var(--muted);font-variant-numeric:tabular-nums;font-size:.82rem}
+#scatter{width:100%;height:auto;display:block}
+#scatter text{fill:var(--muted);font-size:11px;font-family:"IBM Plex Sans",sans-serif}
+#scatter .ax{stroke:var(--line)}
+#scatter circle{cursor:pointer;stroke:var(--surface);stroke-width:1}
+.legend{display:flex;gap:14px;font-size:.8rem;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:.8rem;padding:6px 8px;border-radius:6px;opacity:0;transition:opacity .1s;z-index:20;max-width:240px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:.86rem;font-variant-numeric:tabular-nums}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:var(--surface);font-weight:500;color:var(--muted);cursor:pointer;user-select:none;font-size:.78rem}
+th[data-sort]::after{content:" ↕";opacity:.35}
+th.asc::after{content:" ↑";opacity:1}
+th.desc::after{content:" ↓";opacity:1}
+td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.tkr{font-weight:600}
+.tkr small{display:block;font-weight:400;color:var(--muted);font-size:.76rem;max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .na{color:var(--muted)}
+.score{display:inline-block;min-width:34px;text-align:center;border-radius:6px;padding:1px 6px;font-weight:600}
+.tag{display:inline-block;font-size:.7rem;padding:1px 6px;border-radius:4px;background:var(--chip);color:var(--muted);margin-left:3px}
+.tag.w{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.tag.r{background:color-mix(in srgb,var(--neg) 15%,transparent);color:var(--neg)}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);padding:0;width:min(640px,calc(100vw - 24px));max-height:88vh}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dhead{padding:16px 18px 8px;display:flex;justify-content:space-between;gap:10px}
+.dhead h2{margin:0;font-size:1.2rem}
+.dbody{padding:0 18px 18px;overflow:auto}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:.88rem}
+@media (max-width:480px){.dgrid{grid-template-columns:1fr}}
+.dgrid div{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding:3px 0}
+.dgrid span:first-child{color:var(--muted)}
+.dbody h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:16px 0 6px;font-weight:500}
+.close{all:unset;cursor:pointer;font-size:1.4rem;line-height:1;color:var(--muted)}
+.bars div{display:grid;grid-template-columns:120px 1fr 36px;gap:8px;align-items:center;font-size:.84rem;margin:3px 0}
+.bars .b{height:8px;background:var(--chip);border-radius:4px;overflow:hidden}
+.bars .b i{display:block;height:100%;background:var(--accent)}
+section.method{margin-top:26px;font-size:.88rem;color:var(--muted)}
+section.method h2{color:var(--ink);font-size:1rem}
+section.method li{margin:3px 0}
+details summary{cursor:pointer;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Cribado bursátil semanal</h1>
+    <div class="meta" id="meta">Cargando datos…</div>
+    <div id="banner"></div>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="controls" role="group" aria-label="Filtros">
+    <button class="chip" data-idx="" aria-pressed="true">Todos</button>
+    <button class="chip" data-idx="IBEX35" aria-pressed="false">IBEX 35</button>
+    <button class="chip" data-idx="ES50" aria-pressed="false">Euro Stoxx 50</button>
+    <button class="chip" data-idx="CONTINUO" aria-pressed="false">Resto continuo</button>
+    <select id="sector" aria-label="Sector"><option value="">Todos los sectores</option></select>
+    <input type="search" id="q" placeholder="Buscar empresa o ticker">
+    <label class="tg"><input type="checkbox" id="soloScore"> Solo con puntuación</label>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Señales de la semana</h2>
+      <div class="sub">Listas generadas con reglas fijas (ver metodología). Son puntos de partida para analizar, no recomendaciones.</div>
+      <div class="sig" id="signals"></div>
+    </div>
+    <div class="card">
+      <h2>P/VC frente a ROE</h2>
+      <div class="sub">Arriba a la izquierda: rentabilidad alta a precio bajo sobre libros. Excluye P/VC ≤ 0 y valores extremos.</div>
+      <svg id="scatter" viewBox="0 0 420 300" role="img" aria-label="Dispersión P/VC frente a ROE"></svg>
+      <div class="legend"><span><i style="background:var(--ibex)"></i>IBEX 35</span><span><i style="background:var(--es50)"></i>Euro Stoxx 50</span><span><i style="background:var(--cont)"></i>Resto continuo</span></div>
+    </div>
+  </div>
+
+  <div class="tablewrap">
+    <table id="tabla">
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <section class="method">
+    <h2>Metodología y fuentes</h2>
+    <ul>
+      <li><b>Fuente:</b> Yahoo Finance vía la librería <span class="mono">yfinance</span>. Cada valor enlaza a su ficha de Yahoo y guarda la hora de descarga. Datos no oficiales: compruébalos con las cuentas anuales o la CNMV antes de decidir nada.</li>
+      <li><b>Indicadores (lista Cajaviva):</b> ingresos, BPA, DPA, ROA, P/VC, rentabilidad por dividendo (DPA/precio), EBITDA, flujo de caja libre y operativo por acción, ROE y volatilidad anualizada (desviación típica de los rendimientos logarítmicos diarios del último año × √252). Se omite el valor liquidativo, que es propio de fondos.</li>
+      <li><b>Añadidos:</b> PER, payout, deuda neta/EBITDA, distancia a máximos y mínimos de 52 semanas y a la media de 200 sesiones (sustituto objetivo de soportes y resistencias).</li>
+      <li><b>Financieras e inmobiliarias:</b> no se muestran EBITDA ni deuda neta/EBITDA, porque en bancos, aseguradoras y socimis no son comparables.</li>
+      <li><b>Puntuación 0–100:</b> media de percentiles dentro del sector de Yahoo en PER (bajo), P/VC (bajo), RDP (alta), ROE (alto) y deuda neta/EBITDA (baja). Con menos de 4 comparables se compara con todo el universo. PER y P/VC negativos no puntúan. Exige al menos 3 métricas.</li>
+      <li><b>Alertas:</b> <i>posible trampa de dividendo</i> (RDP ≥ 7 % con payout &gt; 100 % o deuda/EBITDA &gt; 4×); <i>cerca de mínimos</i> (≤ 5 % sobre el mínimo de 52 semanas); <i>caída semanal</i> (≤ −5 %); <i>revisar moneda</i> (cotiza en una divisa y reporta en otra, así que algunos ratios de Yahoo pueden estar mal calculados).</li>
+      <li><b>Limitaciones:</b> los fundamentales se actualizan trimestralmente, de modo que la señal semanal procede sobre todo del precio. La composición de los índices debe revisarse tras cada revisión trimestral (archivo <span class="mono">tickers.csv</span>).</li>
+    </ul>
+    <details id="errbox"><summary>Valores sin datos esta semana</summary><ul id="errlist"></ul></details>
+    <p>Herramienta de cribado con fines educativos y de investigación. No constituye asesoramiento financiero.</p>
+  </section>
+</div>
+
+<dialog id="det"><div class="dhead"><div><h2 id="dtitle"></h2><div class="meta" id="dsub"></div></div><button class="close" aria-label="Cerrar" onclick="det.close()">×</button></div><div class="dbody" id="dbody"></div></dialog>
+<div class="tip" id="tip"></div>
+
+<script>
+const ES = new Intl.NumberFormat('es-ES',{maximumFractionDigits:2});
+const ES1 = new Intl.NumberFormat('es-ES',{maximumFractionDigits:1, minimumFractionDigits:1});
+const NOMBRE_IDX = {IBEX35:'IBEX 35', ES50:'Euro Stoxx 50', CONTINUO:'Continuo'};
+const ALERTA = {
+  posible_trampa_dividendo:['Posible trampa dividendo','r'], rdp_alta:['RDP alta',''], apalancamiento_alto:['Apalancada','w'],
+  cerca_minimo_52s:['Cerca mín. 52s',''], caida_semanal:['Caída semanal','w'], perdidas:['Pérdidas','r'],
+  revisar_moneda:['Revisar moneda','w'], sobre_media_200:null, bajo_media_200:null
+};
+let D = null, filtroIdx = '', orden = {k:'score', dir:-1};
+
+const n = v => v === null || v === undefined || Number.isNaN(v);
+const fmt = (v, d=1) => n(v) ? '<span class="na">—</span>' : (d===1?ES1:ES).format(v);
+const pct = (v, signo=false) => n(v) ? '<span class="na">—</span>' : `<span class="${signo?(v>=0?'pos':'neg'):''}">${signo&&v>0?'+':''}${ES1.format(v)}%</span>`;
+const big = v => {
+  if (n(v)) return '<span class="na">—</span>';
+  const a = Math.abs(v);
+  if (a >= 1e9) return ES1.format(v/1e9)+' MM';
+  if (a >= 1e6) return ES1.format(v/1e6)+' M';
+  return ES.format(v);
+};
+const colorIdx = f => f.indices.includes('IBEX35') ? 'var(--ibex)' : f.indices.includes('ES50') ? 'var(--es50)' : 'var(--cont)';
+function scoreCell(s){
+  if (n(s)) return '<span class="na">—</span>';
+  const a = 0.08 + 0.32*(s/100);
+  return `<span class="score" style="background:color-mix(in srgb,var(--pos) ${Math.round(a*100)}%,transparent)">${s}</span>`;
+}
+const median = arr => { const a = arr.filter(x=>!n(x)).sort((x,y)=>x-y); if(!a.length) return null; const m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2; };
+
+const COLS = [
+  ['ticker','Valor', f=>`<div class="tkr">${f.ticker.replace(/\.(MC|PA|DE|AS|MI|BR|HE)$/,'')}<small>${f.nombre}</small></div>`],
+  ['score','Punt.', f=>scoreCell(f.score)],
+  ['precio','Precio', f=>fmt(f.precio,2)],
+  ['var_semana','Sem.', f=>pct(f.var_semana,true)],
+  ['per','PER', f=>fmt(f.per)],
+  ['pvc','P/VC', f=>fmt(f.pvc,2)],
+  ['rdp','RDP', f=>pct(f.rdp)],
+  ['payout','Payout', f=>pct(f.payout)],
+  ['roe','ROE', f=>pct(f.roe)],
+  ['roa','ROA', f=>pct(f.roa)],
+  ['bpa','BPA', f=>fmt(f.bpa,2)],
+  ['dpa','DPA', f=>fmt(f.dpa,2)],
+  ['ebitda','EBITDA', f=>big(f.ebitda)],
+  ['deuda_neta_ebitda','DN/EBITDA', f=>n(f.deuda_neta_ebitda)?'<span class="na">—</span>':ES1.format(f.deuda_neta_ebitda)+'×'],
+  ['fcl_accion','FCL/acc.', f=>fmt(f.fcl_accion,2)],
+  ['volatilidad','Volat.', f=>pct(f.volatilidad)],
+  ['dist_min_52s','vs mín 52s', f=>pct(f.dist_min_52s,true)],
+  ['dist_media_200','vs MM200', f=>pct(f.dist_media_200,true)],
+  ['ingresos','Ingresos', f=>big(f.ingresos)],
+  ['alertas','Alertas', f=>tags(f)],
+];
+function tags(f){ return (f.alertas||[]).map(a=>ALERTA[a]?`<span class="tag ${ALERTA[a][1]}">${ALERTA[a][0]}</span>`:'').join(''); }
+
+function filtrados(){
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const sec = document.getElementById('sector').value;
+  const solo = document.getElementById('soloScore').checked;
+  return D.valores.filter(f =>
+    (!filtroIdx || f.indices.includes(filtroIdx)) && (!sec || f.sector===sec) && (!solo || !n(f.score)) &&
+    (!q || f.ticker.toLowerCase().includes(q) || f.nombre.toLowerCase().includes(q)));
+}
+
+function render(){
+  const rows = filtrados();
+  renderKPIs(rows); renderSignals(rows); renderScatter(rows); renderTable(rows);
+}
+
+function renderKPIs(rows){
+  const k = [
+    [rows.length, 'valores en la vista'],
+    [n(median(rows.map(f=>f.per>0?f.per:null)))?'—':ES1.format(median(rows.map(f=>f.per>0?f.per:null))), 'PER mediano (positivos)'],
+    [n(median(rows.map(f=>f.rdp)))?'—':ES1.format(median(rows.map(f=>f.rdp)))+'%', 'RDP mediana'],
+    [n(median(rows.map(f=>f.var_semana)))?'—':(median(rows.map(f=>f.var_semana))>0?'+':'')+ES1.format(median(rows.map(f=>f.var_semana)))+'%', 'variación semanal mediana'],
+    [rows.filter(f=>(f.alertas||[]).includes('cerca_minimo_52s')).length, 'cerca de mínimos de 52 s.'],
+  ];
+  document.getElementById('kpis').innerHTML = k.map(([v,l])=>`<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+}
+
+function lista(titulo, arr, val){
+  const li = arr.length ? arr.map(f=>`<li><button data-t="${f.ticker}">${f.nombre}</button> <span class="n">${val(f)}</span></li>`).join('') : '<li class="na">Ninguno</li>';
+  return `<div><h3>${titulo}</h3><ol>${li}</ol></div>`;
+}
+function renderSignals(rows){
+  const conScore = rows.filter(f=>!n(f.score));
+  const top = [...conScore].sort((a,b)=>b.score-a.score).slice(0,6);
+  const suben = conScore.filter(f=>!n(f.score_anterior)).map(f=>({...f,d:f.score-f.score_anterior})).filter(f=>f.d>0).sort((a,b)=>b.d-a.d).slice(0,6);
+  const minimos = conScore.filter(f=>f.alertas.includes('cerca_minimo_52s') && f.score>=60).sort((a,b)=>b.score-a.score).slice(0,6);
+  const trampas = rows.filter(f=>f.alertas.includes('posible_trampa_dividendo')).sort((a,b)=>b.rdp-a.rdp).slice(0,6);
+  document.getElementById('signals').innerHTML =
+    lista('Mejor puntuación', top, f=>`· ${f.score}`) +
+    (D.semana_previa ? lista(`Más mejoran vs ${D.semana_previa}`, suben, f=>`· +${f.d}`) : `<div><h3>Más mejoran</h3><p class="na" style="font-size:.85rem;margin:0">Aparecerá desde la segunda semana.</p></div>`) +
+    lista('Puntuación ≥ 60 y cerca de mínimos', minimos, f=>`· ${f.score} · +${ES1.format(f.dist_min_52s)}%`) +
+    lista('Ojo: posible trampa de dividendo', trampas, f=>`· RDP ${ES1.format(f.rdp)}%`);
+}
+
+const tip = document.getElementById('tip');
+function renderScatter(rows){
+  const svg = document.getElementById('scatter');
+  const W=420,H=300,m={l:40,r:12,t:10,b:34};
+  const pts = rows.filter(f=>f.pvc>0 && f.pvc<12 && !n(f.roe) && f.roe>-30 && f.roe<60);
+  const xmax = Math.max(3, ...pts.map(f=>f.pvc))*1.05, ymin = Math.min(0,...pts.map(f=>f.roe)), ymax = Math.max(20,...pts.map(f=>f.roe))*1.05;
+  const X = v => m.l + (v/xmax)*(W-m.l-m.r), Y = v => H-m.b - ((v-ymin)/(ymax-ymin))*(H-m.t-m.b);
+  let g = '';
+  const xt = xmax>8?2:1; for(let v=0; v<=xmax; v+=xt) g+=`<line class="ax" x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${H-m.b}"/><text x="${X(v)}" y="${H-m.b+14}" text-anchor="middle">${v}</text>`;
+  const yt = (ymax-ymin)>40?10:5; for(let v=Math.ceil(ymin/yt)*yt; v<=ymax; v+=yt) g+=`<line class="ax" x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v}%</text>`;
+  g += `<text x="${(W+m.l)/2}" y="${H-4}" text-anchor="middle">P/VC (veces)</text><text x="12" y="${(H-m.b)/2}" text-anchor="middle" transform="rotate(-90 12 ${(H-m.b)/2})">ROE</text>`;
+  g += pts.map(f=>`<circle cx="${X(f.pvc)}" cy="${Y(f.roe)}" r="4.5" fill="${colorIdx(f)}" fill-opacity=".8" data-t="${f.ticker}"/>`).join('');
+  svg.innerHTML = g;
+  svg.querySelectorAll('circle').forEach(c=>{
+    const f = D.valores.find(v=>v.ticker===c.dataset.t);
+    c.addEventListener('mousemove',e=>{tip.style.opacity=1;tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';tip.innerHTML=`<b>${f.nombre}</b><br>P/VC ${ES.format(f.pvc)} · ROE ${ES1.format(f.roe)}%`;});
+    c.addEventListener('mouseleave',()=>tip.style.opacity=0);
+  });
+}
+
+function renderTable(rows){
+  document.getElementById('thead').innerHTML = COLS.map(([k,l])=>`<th data-sort="${k}" class="${orden.k===k?(orden.dir>0?'asc':'desc'):''}">${l}</th>`).join('');
+  const s = [...rows].sort((a,b)=>{
+    let x=a[orden.k], y=b[orden.k];
+    if (orden.k==='ticker'){x=a.nombre;y=b.nombre; return orden.dir*x.localeCompare(y,'es');}
+    if (orden.k==='alertas'){x=(a.alertas||[]).length;y=(b.alertas||[]).length;}
+    if (n(x)) return 1; if (n(y)) return -1; return orden.dir*(x-y);
+  });
+  document.getElementById('tbody').innerHTML = s.map(f=>`<tr data-t="${f.ticker}">${COLS.map(c=>`<td>${c[2](f)}</td>`).join('')}</tr>`).join('');
+}
+
+function detalle(t){
+  const f = D.valores.find(v=>v.ticker===t); if(!f) return;
+  document.getElementById('dtitle').textContent = `${f.nombre} (${f.ticker})`;
+  document.getElementById('dsub').innerHTML = `${f.indices.map(i=>NOMBRE_IDX[i]).join(' · ')} · ${f.sector}${f.industria?' / '+f.industria:''} · ${f.moneda||''}${f.moneda_contable&&f.moneda_contable!==f.moneda?' (reporta en '+f.moneda_contable+')':''}`;
+  const kv = (l,v)=>`<div><span>${l}</span><span>${v}</span></div>`;
+  const nombres = {per:'PER',pvc:'P/VC',rdp:'RDP',roe:'ROE',deuda_neta_ebitda:'Deuda neta/EBITDA'};
+  const bars = Object.entries(f.score_detalle||{}).map(([k,v])=>`<div><span>${nombres[k]}</span><span class="b"><i style="width:${v}%"></i></span><span>${v}</span></div>`).join('');
+  document.getElementById('dbody').innerHTML = `
+    <h3>Valoración y dividendo</h3><div class="dgrid">
+      ${kv('Precio',fmt(f.precio,2))}${kv('Capitalización',big(f.capitalizacion))}${kv('PER',fmt(f.per))}${kv('PER estimado',fmt(f.per_futuro))}
+      ${kv('P/VC',fmt(f.pvc,2))}${kv('RDP',pct(f.rdp))}${kv('DPA',fmt(f.dpa,2))}${kv('Payout',pct(f.payout))}</div>
+    <h3>Resultados y rentabilidad</h3><div class="dgrid">
+      ${kv('Ingresos',big(f.ingresos))}${kv('EBITDA',f.financiera?'<span class="na">n/a (financiera)</span>':big(f.ebitda))}${kv('BPA',fmt(f.bpa,2))}${kv('ROE',pct(f.roe))}
+      ${kv('ROA',pct(f.roa))}${kv('FCL por acción',fmt(f.fcl_accion,2))}${kv('FCO por acción',fmt(f.fco_accion,2))}${kv('Deuda neta/EBITDA',f.financiera?'<span class="na">n/a</span>':(n(f.deuda_neta_ebitda)?'—':ES1.format(f.deuda_neta_ebitda)+'×'))}</div>
+    <h3>Precio y riesgo</h3><div class="dgrid">
+      ${kv('Var. semanal',pct(f.var_semana,true))}${kv('Var. 4 semanas',pct(f.var_4s,true))}${kv('Volatilidad anual',pct(f.volatilidad))}${kv('Máx. 52 s.',fmt(f.max_52s,2))}
+      ${kv('Mín. 52 s.',fmt(f.min_52s,2))}${kv('vs mínimo 52 s.',pct(f.dist_min_52s,true))}${kv('Media 200 sesiones',fmt(f.media_200,2))}${kv('vs media 200',pct(f.dist_media_200,true))}</div>
+    <h3>Puntuación ${n(f.score)?'—':f.score}${!n(f.score_anterior)?` (semana anterior ${f.score_anterior})`:''} · comparada con ${f.comparado_con==='universo'?'todo el universo':'su sector'}</h3>
+    <div class="bars">${bars||'<span class="na">Sin datos suficientes</span>'}</div>
+    ${(f.alertas||[]).filter(a=>ALERTA[a]).length?`<h3>Alertas</h3><div>${tags(f)}</div>`:''}
+    <h3>Fuente</h3><p style="font-size:.86rem;margin:0"><a href="${f.url_fuente}" target="_blank" rel="noopener" style="color:var(--accent)">Ficha en Yahoo Finance</a> · descargado ${new Date(f.descargado).toLocaleString('es-ES')}</p>`;
+  det.showModal();
+}
+
+document.addEventListener('click', e=>{
+  const th = e.target.closest('th[data-sort]');
+  if (th){ const k=th.dataset.sort; orden = {k, dir: orden.k===k ? -orden.dir : (k==='ticker'?1:-1)}; renderTable(filtrados()); return; }
+  const c = e.target.closest('.chip');
+  if (c){ document.querySelectorAll('.chip').forEach(b=>b.setAttribute('aria-pressed', b===c)); filtroIdx=c.dataset.idx; render(); return; }
+  const t = e.target.closest('[data-t]');
+  if (t && !e.target.closest('dialog')) detalle(t.dataset.t);
+});
+['q','sector','soloScore'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+
+fetch('data/latest.json',{cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); }).then(d=>{
+  D = d;
+  const fecha = new Date(d.generado).toLocaleString('es-ES',{dateStyle:'long',timeStyle:'short'});
+  document.getElementById('meta').innerHTML = `Actualizado el ${fecha} · ${d.n_ok} de ${d.n_universo} valores · Fuente: ${d.fuente} · <a href="data/latest.json">datos en bruto</a>`;
+  if (d.demo) document.getElementById('banner').innerHTML = '<div class="banner"><b>Datos de demostración.</b> Son cifras sintéticas para probar el diseño; se sustituyen en la primera ejecución real.</div>';
+  const secs = [...new Set(d.valores.map(f=>f.sector))].sort((a,b)=>a.localeCompare(b,'es'));
+  document.getElementById('sector').innerHTML += secs.map(s=>`<option>${s}</option>`).join('');
+  document.getElementById('errlist').innerHTML = d.errores.length ? d.errores.map(e=>`<li><span class="mono">${e.ticker}</span> ${e.nombre}: ${e.error}</li>`).join('') : '<li>Ninguno</li>';
+  document.querySelector('#errbox summary').textContent = `Valores sin datos esta semana (${d.errores.length})`;
+  render();
+}).catch(err=>{ document.getElementById('meta').textContent = 'No se han podido cargar los datos ('+err.message+'). ¿Se ha ejecutado ya el workflow?'; });
+</script>
+</body>
+</html>
