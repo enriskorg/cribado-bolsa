@@ -118,6 +118,12 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .gi th{font-size:.74rem}
 .gi th:first-child,.gi td:first-child{position:static}
 .gi th[data-sort]::after{content:none}
+.ctab{overflow-x:auto}
+.ctab table{font-size:.84rem;width:100%}
+.ctab th,.ctab td{position:static;padding:4px 8px;cursor:default}
+.ctab th:first-child,.ctab td:first-child{position:static;text-align:left;white-space:normal}
+.ctab th[data-sort]::after{content:none}
+.ctab tr.cg td{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding-top:12px;border-bottom:1px solid var(--line)}
 section.method{margin-top:26px;font-size:.88rem;color:var(--muted)}
 section.method h2{color:var(--ink);font-size:1rem}
 section.method li{margin:3px 0}
@@ -236,7 +242,7 @@ const RANGOS = {
     util:{t:['< 1,3','1,3 – 2,5','> 2,5'], f:v=> v<=0?'r':v<1.3?'g':v<=2.5?'y':'r'},
   },
   rdp: {
-    def:{t:['3,5 % – 7 %','< 3,5 % (o no reparte)','> 7 % (riesgo de recorte)'], f:v=> v>7?'r':v>=3.5?'g':'y'},
+    def:{t:['≥ 3,5 % y cubierta','< 3,5 % (o no reparte)','> 7 % sin cubrir'], f:v=> v>=3.5?'g':'y'},
   },
   payout: {
     def:{t:['25 % – 65 %','65 % – 90 % o < 25 %','> 90 %'], f:v=> (v>90||v<0)?'r':(v>=25&&v<=65)?'g':'y'},
@@ -278,7 +284,14 @@ function nivel(campo, f){
   const g = grupo(f);
   if ((NO_APLICA[campo]||[]).includes(g)) return null;
   if ((campo==='payout' || campo==='rdp') && !(f.dpa>0)) return campo==='rdp' ? 'y' : null;
+  if (campo==='rdp' && v>7 && !dividendoCubierto(f)) return 'r';
   return (R[g] || R.def).f(v);
+}
+/* Mismo criterio que la alerta del script: payout ≤ 90 % y, si hay dato, FCL/DPA ≥ 0,8 */
+function dividendoCubierto(f){
+  if (!n(f.payout) && (f.payout > 90 || f.payout < 0)) return false;
+  if (!n(f.cobertura_div) && grupo(f)!=='fin' && f.cobertura_div < 0.8) return false;
+  return true;
 }
 const NIVEL_TXT = {g:'mejor de lo habitual', y:'dentro de lo habitual', r:'fuera de lo habitual'};
 function sem(campo, f, html){
@@ -335,7 +348,7 @@ const GLOSARIO = [
    l:'En cifra absoluta no dice nada (0,38 € puede ser mucho o poco según el precio); por eso no lleva semáforo. Se interpreta a través de la RDP, el payout y la cobertura con flujo de caja.'},
   {k:'rdp', n:'RDP (rentabilidad por dividendo)', q:'Qué porcentaje del precio recibes cada año en dividendos.',
    fx:'DPA ÷ precio × 100.',
-   l:'Más alta no siempre es mejor: una RDP muy elevada suele indicar que el mercado descuenta un recorte. Por eso &gt; 7 % sale en rojo. Una RDP baja no es mala en sí (empresas en crecimiento reinvierten); sale en ámbar.'},
+   l:'Más alta no siempre es mejor: una RDP muy elevada suele indicar que el mercado descuenta un recorte. Por eso una RDP superior al 7 % sale en rojo solo si no está cubierta (payout &gt; 90 % o flujo de caja libre inferior a 0,8 veces el dividendo); si está cubierta, sale en verde. Es el mismo criterio que la alerta «posible trampa de dividendo». Una RDP baja no es mala en sí (empresas en crecimiento reinvierten); sale en ámbar.'},
   {k:'payout', n:'Payout', q:'Qué parte del beneficio se reparte como dividendo.',
    fx:'Dividendos pagados ÷ beneficio neto × 100 (Yahoo). Puede diferir algo de DPA ÷ BPA.',
    l:'Por encima del 100 % se reparte más de lo que se gana, lo que no es sostenible salvo que el beneficio esté deprimido de forma puntual. Las utilities y, sobre todo, las socimis (obligadas por ley a repartir la mayor parte) tienen payouts estructuralmente altos.'},
@@ -376,6 +389,49 @@ const GLOSARIO = [
    fx:'Precio ÷ media de los últimos 200 cierres − 1.', l:'Por encima suele leerse como tendencia alcista y por debajo como bajista o lateral. Es descriptivo, no predictivo. Sin semáforo.'},
  ]},
 ];
+
+const PARTIDAS = {
+  pyg:[['ingresos','Importe neto cifra de negocios'],['margen_bruto','Margen bruto'],['ebitda','EBITDA'],['ebit','Resultado de explotación (EBIT)'],['gastos_financieros','Gastos financieros'],['rdo_antes_imp','Resultado antes de impuestos'],['impuesto','Impuesto sobre beneficios'],['rdo_neto','Resultado neto atribuido'],['bpa','BPA diluido']],
+  balance:[['activo_total','Activo total'],['activo_no_corriente','Activo no corriente'],['activo_corriente','Activo corriente'],['existencias','Existencias'],['deudores','Deudores comerciales'],['efectivo','Efectivo y equivalentes'],['patrimonio_neto','Patrimonio neto atribuido'],['pasivo_total','Pasivo total'],['pasivo_no_corriente','Pasivo no corriente'],['pasivo_corriente','Pasivo corriente'],['deuda_financiera','Deuda financiera'],['deuda_neta','Deuda neta']],
+  flujos:[['fco','Flujo de explotación'],['capex','Inversiones en inmovilizado (capex)'],['fcl','Flujo de caja libre'],['dividendos_pagados','Dividendos pagados'],['recompras','Recompra de acciones']],
+};
+function cuentasHTML(f){
+  const c = f.cuentas;
+  if (!c) return '<h3>Cuentas anuales</h3><p class="na" style="font-size:.86rem">Yahoo no ofrece estados financieros para este valor.</p>';
+  const yr = d => d ? d.slice(0,4) : '—';
+  const [p0,p1] = c.periodos;
+  const val = (k,b,i) => (c[b][k]||[])[i];
+  const celda = (k,v) => n(v) ? NA : (k==='bpa' ? ES.format(v) : big(v));
+  // Variación sobre importes absolutos cuando ambos son salidas (capex, dividendos): «se invirtió un 13 % menos».
+  // Sin colores: que una partida suba no es bueno o malo por sí mismo.
+  const varp = (a,b) => {
+    if (n(a)||n(b)||b===0) return NA;
+    const v = (a<0 && b<0) ? (Math.abs(a)/Math.abs(b)-1)*100 : (a-b)/Math.abs(b)*100;
+    return (v>0?'+':'')+ES1.format(v)+'%';
+  };
+  const bloque = (b, titulo) => {
+    const filas = PARTIDAS[b].filter(([k])=>c[b][k]).map(([k,l])=>`<tr><td>${l}</td><td>${celda(k,val(k,b,0))}</td><td>${celda(k,val(k,b,1))}</td><td>${varp(val(k,b,0),val(k,b,1))}</td></tr>`).join('');
+    return filas ? `<tr class="cg"><td colspan="4">${titulo}</td></tr>${filas}` : '';
+  };
+  // Ratios del cierre
+  const r = (a,b) => (n(a)||n(b)||b===0) ? null : a/b;
+  const ratios = [
+    ['Liquidez (AC / PC)', r(val('activo_corriente','balance',0), val('pasivo_corriente','balance',0)), r(val('activo_corriente','balance',1), val('pasivo_corriente','balance',1)), v=>ES.format(v)+'×'],
+    ['Endeudamiento (Pasivo / PN)', r(val('pasivo_total','balance',0), val('patrimonio_neto','balance',0)), r(val('pasivo_total','balance',1), val('patrimonio_neto','balance',1)), v=>ES.format(v)+'×'],
+    ['Margen neto (Rdo. neto / Ventas)', r(val('rdo_neto','pyg',0), val('ingresos','pyg',0)), r(val('rdo_neto','pyg',1), val('ingresos','pyg',1)), v=>ES1.format(v*100)+'%'],
+    ['ROE del ejercicio', r(val('rdo_neto','pyg',0), val('patrimonio_neto','balance',0)), r(val('rdo_neto','pyg',1), val('patrimonio_neto','balance',1)), v=>ES1.format(v*100)+'%'],
+    ['Cobertura de intereses (EBIT / gastos fin.)', r(val('ebit','pyg',0), Math.abs(val('gastos_financieros','pyg',0)||0)||null), r(val('ebit','pyg',1), Math.abs(val('gastos_financieros','pyg',1)||0)||null), v=>ES1.format(v)+'×'],
+  ].filter(x=>x[1]!==null || x[2]!==null);
+  const filasR = ratios.map(([l,a,b,fm])=>`<tr><td>${l}</td><td>${a===null?NA:fm(a)}</td><td>${b===null?NA:fm(b)}</td><td></td></tr>`).join('');
+  const moneda = f.moneda_contable || f.moneda || '';
+  return `<h3>Cuentas anuales · cierres ${yr(p0)} y ${yr(p1)}</h3>
+    <p class="k" style="font-size:.78rem;margin:0 0 6px">Datos estandarizados por Yahoo, en ${moneda}. Pueden reclasificar partidas respecto a las cuentas depositadas en la CNMV; en bancos y aseguradoras muchas partidas no aplican.</p>
+    <div class="ctab"><table><thead><tr><th>Partida</th><th>${yr(p0)}</th><th>${yr(p1)}</th><th>Var.</th></tr></thead><tbody>
+    ${bloque('pyg','Cuenta de resultados')}${bloque('balance','Balance')}${bloque('flujos','Estado de flujos de efectivo')}
+    ${filasR?`<tr class="cg"><td colspan="4">Ratios del cierre</td></tr>${filasR}`:''}
+    </tbody></table></div>`;
+}
+
 function renderGlosario(){
   const tabla = k => {
     const R = RANGOS[k]; if (!R) return '';
@@ -484,6 +540,7 @@ function detalle(t){
     <h3>Precio y riesgo</h3><div class="dgrid">
       ${kv('Var. semanal',pct(f.var_semana,true))}${kv('Var. 4 semanas',pct(f.var_4s,true))}${kv('Volatilidad anual',sem('volatilidad',f,pct(f.volatilidad)))}${kv('Máx. 52 s.',fmt(f.max_52s,2))}
       ${kv('Mín. 52 s.',fmt(f.min_52s,2))}${kv('vs mínimo 52 s.',pct(f.dist_min_52s,true))}${kv('Media 200 sesiones',fmt(f.media_200,2))}${kv('vs media 200',pct(f.dist_media_200,true))}</div>
+    ${cuentasHTML(f)}
     <h3>Puntuación ${n(f.score)?'—':f.score}${!n(f.score_anterior)?` (semana anterior ${f.score_anterior})`:''} · comparada con ${f.comparado_con==='universo'?'todo el universo':'su sector'}</h3>
     <div class="bars">${bars||'<span class="na">Sin datos suficientes</span>'}</div>
     ${(f.alertas||[]).filter(a=>ALERTA[a]).length?`<h3>Alertas</h3><div>${tags(f)}</div>`:''}
