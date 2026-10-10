@@ -36,7 +36,8 @@ HIST_DIR = OUT_DIR / "history"
 # --- Umbrales de las alertas (editables) -----------------------------------
 UMBRALES = {
     "rdp_alta": 7.0,            # % rentabilidad por dividendo considerada "alta"
-    "payout_max": 100.0,        # % payout por encima del cual el dividendo no está cubierto
+    "payout_max": 90.0,         # % payout por encima del cual el dividendo no está cubierto
+    "cobertura_min": 0.8,       # FCL/DPA mínimo para considerar el dividendo cubierto con caja
     "deuda_ebitda_max": 4.0,    # veces; apalancamiento elevado (no aplica a financieras)
     "cerca_minimo_52s": 5.0,    # % por encima del mínimo de 52 semanas
     "caida_semanal": -5.0,      # % variación semanal para marcar "abaratamiento"
@@ -114,17 +115,84 @@ def metricas_de_precio(closes: list[float]) -> dict:
     return out
 
 
-def descargar(ticker: str) -> tuple[dict, list[float]]:
+# Partidas de las cuentas anuales que se guardan: (clave, etiqueta, [nombres posibles en Yahoo])
+PARTIDAS = {
+    "pyg": [
+        ("ingresos", "Importe neto cifra de negocios", ["Total Revenue", "Operating Revenue"]),
+        ("margen_bruto", "Margen bruto", ["Gross Profit"]),
+        ("ebitda", "EBITDA", ["EBITDA", "Normalized EBITDA"]),
+        ("ebit", "Resultado de explotación (EBIT)", ["Operating Income", "EBIT"]),
+        ("gastos_financieros", "Gastos financieros", ["Interest Expense", "Interest Expense Non Operating"]),
+        ("rdo_antes_imp", "Resultado antes de impuestos", ["Pretax Income"]),
+        ("impuesto", "Impuesto sobre beneficios", ["Tax Provision"]),
+        ("rdo_neto", "Resultado neto atribuido", ["Net Income Common Stockholders", "Net Income"]),
+        ("bpa", "BPA diluido", ["Diluted EPS", "Basic EPS"]),
+    ],
+    "balance": [
+        ("activo_total", "Activo total", ["Total Assets"]),
+        ("activo_no_corriente", "Activo no corriente", ["Total Non Current Assets"]),
+        ("activo_corriente", "Activo corriente", ["Current Assets"]),
+        ("existencias", "Existencias", ["Inventory"]),
+        ("deudores", "Deudores comerciales", ["Accounts Receivable", "Receivables"]),
+        ("efectivo", "Efectivo y equivalentes", ["Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments"]),
+        ("patrimonio_neto", "Patrimonio neto atribuido", ["Stockholders Equity", "Common Stock Equity"]),
+        ("pasivo_total", "Pasivo total", ["Total Liabilities Net Minority Interest"]),
+        ("pasivo_no_corriente", "Pasivo no corriente", ["Total Non Current Liabilities Net Minority Interest"]),
+        ("pasivo_corriente", "Pasivo corriente", ["Current Liabilities"]),
+        ("deuda_financiera", "Deuda financiera", ["Total Debt"]),
+        ("deuda_neta", "Deuda neta", ["Net Debt"]),
+    ],
+    "flujos": [
+        ("fco", "Flujo de explotación", ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities"]),
+        ("capex", "Inversiones en inmovilizado (capex)", ["Capital Expenditure"]),
+        ("fcl", "Flujo de caja libre", ["Free Cash Flow"]),
+        ("dividendos_pagados", "Dividendos pagados", ["Cash Dividends Paid", "Common Stock Dividend Paid"]),
+        ("recompras", "Recompra de acciones", ["Repurchase Of Capital Stock", "Common Stock Payments"]),
+    ],
+}
+
+
+def extraer_cuentas(estados: dict) -> dict | None:
+    """estados = {"pyg": DataFrame, "balance": DataFrame, "flujos": DataFrame} (formato yfinance:
+    filas = partidas, columnas = fechas de cierre, la más reciente primero).
+    Devuelve los dos últimos ejercicios cerrados."""
+    fechas = None
+    out = {"periodos": [], "pyg": {}, "balance": {}, "flujos": {}}
+    for bloque, df in estados.items():
+        if df is None or getattr(df, "empty", True):
+            continue
+        cols = sorted(df.columns, reverse=True)[:2]
+        if fechas is None or bloque == "pyg":
+            fechas = cols
+        for clave, _, nombres in PARTIDAS[bloque]:
+            fila = next((n for n in nombres if n in df.index), None)
+            if fila is None:
+                continue
+            vals = [_num(df.at[fila, c]) for c in cols]
+            if any(v is not None for v in vals):
+                out[bloque][clave] = vals
+    if not fechas or not any(out[b] for b in ("pyg", "balance", "flujos")):
+        return None
+    out["periodos"] = [c.strftime("%Y-%m-%d") if hasattr(c, "strftime") else str(c) for c in fechas]
+    return out
+
+
+def descargar(ticker: str) -> tuple[dict, list[float], dict | None]:
     import yfinance as yf  # import aquí para que --demo funcione sin la librería
 
     tk = yf.Ticker(ticker)
     info = tk.info or {}
     hist = tk.history(period="1y", interval="1d", auto_adjust=False)
     closes = hist["Close"].dropna().tolist() if hist is not None and not hist.empty else []
-    return info, closes
+    cuentas = None
+    try:
+        cuentas = extraer_cuentas({"pyg": tk.income_stmt, "balance": tk.balance_sheet, "flujos": tk.cashflow})
+    except Exception as e:  # noqa: BLE001  — las cuentas son un extra: si fallan, seguimos
+        print(f"{ticker}: sin cuentas anuales ({e})", file=sys.stderr)
+    return info, closes, cuentas
 
 
-def construir_fila(base: dict, info: dict, closes: list[float]) -> dict:
+def construir_fila(base: dict, info: dict, closes: list[float], cuentas: dict | None = None) -> dict:
     precio = _num(info.get("currentPrice")) or _num(info.get("regularMarketPrice")) or (closes[-1] if closes else None)
     acciones = _num(info.get("sharesOutstanding"))
     sector = info.get("sector") or "Sin sector"
@@ -162,6 +230,7 @@ def construir_fila(base: dict, info: dict, closes: list[float]) -> dict:
         "payout": _pct(info.get("payoutRatio")),
         "deuda_neta_ebitda": None if financiera else _div(deuda_neta, ebitda),
         "financiera": financiera,
+        "cuentas": cuentas,
         "url_fuente": f"https://finance.yahoo.com/quote/{base['ticker']}",
         "descargado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
@@ -217,7 +286,9 @@ def alertas(f: dict) -> list[str]:
     a = []
     u = UMBRALES
     if f.get("rdp") and f["rdp"] >= u["rdp_alta"]:
-        if (f.get("payout") and f["payout"] > u["payout_max"]) or \
+        cobertura = _div(f.get("fcl_accion"), f.get("dpa")) if not f.get("financiera") else None
+        if (f.get("payout") is not None and (f["payout"] > u["payout_max"] or f["payout"] < 0)) or \
+           (cobertura is not None and cobertura < u["cobertura_min"]) or \
            (f.get("deuda_neta_ebitda") and f["deuda_neta_ebitda"] > u["deuda_ebitda_max"]):
             a.append("posible_trampa_dividendo")
         else:
@@ -281,7 +352,21 @@ def datos_demo(base: dict) -> tuple[dict, list[float]]:
         "trailingPE": rnd.uniform(4, 40), "forwardPE": rnd.uniform(4, 35), "payoutRatio": rnd.uniform(0, 1.4),
         "totalDebt": ebitda * rnd.uniform(0, 6), "totalCash": ebitda * rnd.uniform(0, 1.5),
     }
-    return info, closes
+    import datetime as _dt
+    cierre = [_dt.date(2025, 12, 31), _dt.date(2024, 12, 31)]
+    g = rnd.uniform(0.9, 1.15)
+    rev = info["totalRevenue"]
+    cuentas = {
+        "periodos": [c.isoformat() for c in cierre],
+        "pyg": {"ingresos": [rev, rev / g], "ebitda": [ebitda, ebitda / g], "ebit": [ebitda * .7, ebitda * .7 / g],
+                "rdo_neto": [ebitda * .4, ebitda * .4 / g], "bpa": [ebitda * .4 / acciones, ebitda * .4 / g / acciones]},
+        "balance": {"activo_total": [rev * 1.6, rev * 1.5], "patrimonio_neto": [rev * .6, rev * .55],
+                    "pasivo_total": [rev, rev * .95], "activo_corriente": [rev * .5, rev * .45],
+                    "pasivo_corriente": [rev * .4, rev * .42], "deuda_neta": [ebitda * 1.2, ebitda * 1.5]},
+        "flujos": {"fco": [ebitda * .8, ebitda * .7], "capex": [-ebitda * .3, -ebitda * .35],
+                   "fcl": [ebitda * .5, ebitda * .35], "dividendos_pagados": [-ebitda * .2, -ebitda * .18]},
+    }
+    return info, closes, cuentas
 
 
 def main():
@@ -296,10 +381,10 @@ def main():
         t = base["ticker"]
         for intento in range(3):
             try:
-                info, closes = datos_demo(base) if args.demo else descargar(t)
+                info, closes, cuentas = datos_demo(base) if args.demo else descargar(t)
                 if not closes and not info.get("regularMarketPrice") and not info.get("currentPrice"):
                     raise ValueError("sin datos de precio (¿ticker erróneo o excluido de bolsa?)")
-                filas.append(construir_fila(base, info, closes))
+                filas.append(construir_fila(base, info, closes, cuentas))
                 break
             except Exception as e:  # noqa: BLE001
                 if intento == 2:
