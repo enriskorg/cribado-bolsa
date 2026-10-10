@@ -1,0 +1,30 @@
+name: Cribado semanal
+
+on:
+  schedule:
+    - cron: "17 7 * * 6"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  cribado:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+      - name: Ejecutar cribado
+        run: python screener.py
+      - name: Guardar resultados
+        run: |
+          git config user.name "cribado-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/data
+          git diff --cached --quiet || git commit -m "Datos semana $(date -u +%F)"
+          git push
